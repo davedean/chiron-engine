@@ -163,7 +163,8 @@ if __name__ == "__main__":
     # printf("\n\n")
 
     # set up model/tokenizer
-    model, tokenizer = download_model("Qwen/Qwen2.5-0.5B-Instruct","./qwen2.5-0.5B-Instruct")
+    # model, tokenizer = download_model("Qwen/Qwen2.5-0.5B-Instruct","./qwen2.5-0.5B-Instruct")
+    model, tokenizer = download_model()
 
     # system prompt
     prompt_system = (
