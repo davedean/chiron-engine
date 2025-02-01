@@ -2,8 +2,14 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import os
 import sys
+import re
+import argparse
 
-def download_model(model_name = "Qwen/Qwen2.5-0.5B",local_path = "./qwen2.5-0.5B"):
+def download_model(model_name = "Qwen/Qwen2.5-0.5B"):
+
+    # if local_path == "":
+    # Create the local path by replacing non-valid characters with underscores and converting to lower case
+    local_path = re.sub(r'[^a-zA-Z0-9_.-]', '_', model_name).lower()
 
     model_path="./models/"+local_path
 
@@ -28,6 +34,73 @@ def download_model(model_name = "Qwen/Qwen2.5-0.5B",local_path = "./qwen2.5-0.5B
         print("Model and tokenizer saved locally.")
 
     return model, tokenizer
+
+def calculate_varentropy(logits: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate the varentropy (variance of entropy) of the given logits.
+
+    Args:
+    logits (torch.Tensor): Tensor of shape [batch_size, vocab_size]
+
+    Returns:
+    torch.Tensor: Varentropy values of shape [batch_size]
+    """
+    # Add small epsilon to avoid log(0)
+    eps = 1e-10
+
+    # Compute softmax with better numerical stability
+    max_logits = torch.max(logits, dim=-1, keepdim=True)[0]
+    logits_exp = torch.exp(logits - max_logits)
+    probs = logits_exp / torch.sum(logits_exp, dim=-1, keepdim=True)
+
+    # Compute log probabilities
+    log_probs = torch.log(probs + eps)
+
+    # Calculate entropy
+    entropy = -torch.sum(probs * log_probs, dim=-1, keepdim=True)
+
+    # Calculate varentropy
+    varentropy = torch.sum(probs * (log_probs + entropy) ** 2, dim=-1)
+
+    # Check for invalid values
+    varentropy = torch.where(torch.isnan(varentropy), torch.zeros_like(varentropy), varentropy)
+
+    # print("ve: ", varentropy)
+    return varentropy
+
+
+def calculate_entropy(logits: torch.Tensor) -> torch.Tensor:
+
+    """
+    Calculate the entropy of the given logits.
+
+    Args:
+    logits (torch.Tensor): Tensor of shape [batch_size, vocab_size]
+
+    Returns:
+    torch.Tensor: Entropy values of shape [batch_size]
+    """
+    # Add small epsilon to avoid log(0)
+    eps = 1e-10
+
+    # Compute softmax with better numerical stability
+    max_logits = torch.max(logits, dim=-1, keepdim=True)[0]
+    logits_exp = torch.exp(logits - max_logits)
+    probs = logits_exp / torch.sum(logits_exp, dim=-1, keepdim=True)
+
+    # Compute log probabilities
+    log_probs = torch.log(probs + eps)
+
+    # Calculate entropy
+    entropy = -torch.sum(probs * log_probs, dim=-1)
+
+    # Check for invalid values
+    entropy = torch.where(torch.isnan(entropy), torch.zeros_like(entropy), entropy)
+    # print("e: ", entropy)
+    return entropy
+
+
+
 
 def generate_response(model, tokenizer, model_inputs, max_new_tokens=50, sampler='greedy'):
 
@@ -141,15 +214,35 @@ def apply_heuristic_logic(generated_ids, current_sampler):
     # return current_sampler  # Return the possibly modified sampler
     return current_sampler
 
+
 if __name__ == "__main__":
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Download a model and tokenizer.")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-0.5B",
+                        help="Name of the model to download")
+    parser.add_argument("--model-type", type=str, default="base",
+                        help="Type of the model to download (base or instruct)")
+    parser.add_argument("--max-tokens", type=int, default="512",
+                        help="Maximum tokens to generate")
+
+    # Parse the command line arguments
+    args = parser.parse_args()
+
+    # Set up model/tokenizer based on the provided arguments
+    model, tokenizer = download_model(args.model)
+
+    # Use the model type for further logic
+    model_type = args.model_type
+
+    print(f"Model type: {model_type}")
 
     # set up model/tokenizer
-    # model, tokenizer = download_model()
+    # model, tokenizer = download_model("Qwen/Qwen2.5-0.5B")
     # model_type = "base"
 
-    # or .. 
-    model, tokenizer = download_model("Qwen/Qwen2.5-0.5B-Instruct","./qwen2.5-0.5B-Instruct")
-    model_type = "instruct"
+    # # or .. 
+    # model, tokenizer = download_model("Qwen/Qwen2.5-0.5B-Instruct")
+    # model_type = "instruct"
 
     # system prompt
     prompt_system = (
@@ -187,5 +280,5 @@ if __name__ == "__main__":
 
         # Generate and print the response
         # response = generate_response(model, tokenizer, model_inputs, sampler='greedy', max_new_tokens=2000)
-        response = generate_response_token_by_token(model, tokenizer, model_inputs, max_new_tokens=2000,initial_sampler="greedy")
+        response = generate_response_token_by_token(model, tokenizer, model_inputs, max_new_tokens=args.max_tokens,initial_sampler="greedy")
         # print(f"Model response: {response.strip()}")
