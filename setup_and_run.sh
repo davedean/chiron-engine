@@ -18,7 +18,7 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 
 # Run the Python script
-python download_qwen.py
+python query.py
 
 # Deactivate the virtual environment
 deactivate
